@@ -1,6 +1,6 @@
 import type { Component } from 'vue'
 import { getConfig } from './config'
-import type { ResourceApi } from './api'
+import type { ResourceApi, ResourceId } from './api'
 
 export type SpecFieldType =
   | 'integer'
@@ -79,6 +79,16 @@ export type ResourceListAction = {
   permission?: string
 }
 
+/**
+ * Operates on the rows the operator has ticked. Declaring one is what turns on the list page's
+ * checkbox column — no bulk actions, no selection UI.
+ */
+export type ResourceBulkAction = {
+  label: string | ((ids: ResourceId[]) => string)
+  onClick: (ids: ResourceId[]) => void | Promise<void>
+  permission?: string
+}
+
 export type ResourceItemAction<T = Record<string, unknown>> = {
   label: string | ((resource: T) => string)
   onClick: (resource: T) => void
@@ -131,6 +141,7 @@ export type ResourceSpec<T = Record<string, unknown>> = {
   actions?: {
     list?: ResourceListAction[]
     resource?: ResourceItemAction[]
+    bulk?: ResourceBulkAction[]
   }
   validationSchema?: ValidationSchema
 }

@@ -479,6 +479,10 @@ const toggleAll = (selected: boolean): void => {
 | `selection`            | Ids that render as checked. Required to show the column                               |
 | `onToggleSelection`    | Called with a row id when its checkbox changes. Required to show the column           |
 | `onToggleAllSelection` | Called with the target state when the header checkbox changes. Omit for no header box |
+| `selectAllLabel`       | `aria-label` for the header checkbox. Defaults to "Select all rows on this page"      |
+| `rowSelectionLabel`    | `aria-label` per row, from the row. Defaults to `Select row {id}`                     |
+
+`LayoutTableProps` carries all five, so a `layout.table` wrapper can render its own checkbox column.
 
 Both `selection` and `onToggleSelection` must be present — pass neither and the table renders exactly
 as before, so existing lists are unaffected.
@@ -489,7 +493,53 @@ checkbox is checked when every row on the page is selected and indeterminate whe
 
 The checkbox cell stops click propagation, so ticking a row does not fire `onRowClick` — a list can
 navigate on row click and select via the checkbox at the same time. Selected rows carry
-`.row--selected` for styling, and the cells carry `.field--selection`.
+`.row--selected` for styling, and the cells carry `.field--selection`. (Not to be confused with the
+older `.selectable` row class, which means "this row is clickable".)
+
+Ids are compared on their string form, so a `selection` of `['1']` matches a row with `id: 1`. That
+matters because prince hands you both shapes — `item.id` is `number | string`, while route query
+values and list params are always strings.
+
+> Because the checkboxes are controlled, a toggle your handler ignores (a permission check, a failed
+> update) leaves the box visually flipped until something re-renders. Reflect every toggle in
+> `selection`, or reset it explicitly.
+
+### Bulk actions on the standard list page
+
+A resource that declares `actions.bulk` gets the checkbox column, a selection bar and one button per
+action on its generated list page — no custom component needed:
+
+```ts
+export const companyResource = defineResource({
+  name: 'company',
+  route: '/companies',
+  api: () => createResourceApi({ path: '/api/companies' }),
+  actions: {
+    bulk: [
+      {
+        label: (ids) => `Archive ${ids.length}`,
+        onClick: async (ids) => archiveCompanies(ids),
+        permission: 'company.archive',
+      },
+    ],
+  },
+})
+```
+
+`label` may be a string or a function of the current selection. Actions are permission-filtered the
+same way `actions.list[]` is, and with none left the column does not render at all.
+
+After an action resolves the page clears the selection and re-lists, because the action may have
+changed what the current filter matches. If it rejects, the selection is kept so the operator can
+retry and the message is shown in the bar — the click handler cannot await, so an uncaught rejection
+would otherwise be invisible. Reporting it your own way (a toast, say) is still worth doing.
+
+Selection is page-scoped in the header checkbox but accumulates across pages, so an action can apply
+to rows the operator has since paged away from. The count in the bar is what makes that visible.
+
+A `components: { list: … }` override receives `selection`, `onToggleSelection`,
+`onToggleAllSelection`, `bulkActions` and `onRunBulkAction` on `ResourceListPageProps`, so it can
+present the same thing differently.
 
 ---
 

@@ -25,6 +25,22 @@
       @input="onSearchInput"
     />
 
+    <div v-if="selection.length" class="vue-resource prince-bulk-bar">
+      <span class="vue-resource prince-bulk-count">{{ selectionCount }}</span>
+      <PrinceButton
+        v-for="(action, index) in bulkActions"
+        :key="index"
+        type="Edit"
+        :disabled="runningBulkAction"
+        @click="runBulkAction(action)"
+        >{{ bulkActionLabel(action) }}</PrinceButton
+      >
+      <PrinceButton type="Cancel" :disabled="runningBulkAction" @click="clearSelection"
+        >Clear</PrinceButton
+      >
+      <span v-if="bulkError" class="vue-resource prince-error">{{ bulkError }}</span>
+    </div>
+
     <ResourceListView
       :items="items"
       :schema="schema"
@@ -38,6 +54,10 @@
       :item-actions="route.meta.spec?.actions?.resource"
       :sort="sort"
       :on-sort="applySort"
+      :selection="bulkActions.length ? selection : undefined"
+      :on-toggle-selection="bulkActions.length ? toggleSelection : undefined"
+      :on-toggle-all-selection="bulkActions.length ? toggleAllOnPage : undefined"
+      :row-selection-label="rowSelectionLabel"
     />
 
     <template #footer>
@@ -78,9 +98,9 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { createResourceController } from '../resource-controller'
-import type { ResourceListItem, ResourceSchemaField } from '../api'
+import type { ResourceId, ResourceListItem, ResourceSchemaField } from '../api'
 import type { ResourceListPageProps } from '../page-props'
-import type { ResourceFieldDef } from '../resource'
+import type { ResourceBulkAction, ResourceFieldDef } from '../resource'
 import { hasPermission, hasActionPermission, isResourceRef, resolveFieldType } from '../resource'
 import { formatSort, parseSort, toggleSort } from '../sort'
 import { getConfig } from '../config'
@@ -207,6 +227,70 @@ const listActions = computed(() =>
   (route.meta.spec?.actions?.list ?? []).filter((a) => hasActionPermission(a.permission)),
 )
 
+const selection = ref<ResourceId[]>([])
+const runningBulkAction = ref(false)
+const bulkError = ref<string | null>(null)
+
+const bulkActions = computed(() =>
+  (route.meta.spec?.actions?.bulk ?? []).filter((a) => hasActionPermission(a.permission)),
+)
+
+const selectionCount = computed(() =>
+  selection.value.length === 1 ? '1 selected' : `${selection.value.length} selected`,
+)
+
+function bulkActionLabel(action: ResourceBulkAction): string {
+  return typeof action.label === 'function' ? action.label(selection.value) : action.label
+}
+
+function toggleSelection(id: ResourceId) {
+  selection.value = selection.value.includes(id)
+    ? selection.value.filter((selected) => selected !== id)
+    : [...selection.value, id]
+}
+
+// Only the ids on screen, so a selection made before paging or searching is not silently dropped.
+function toggleAllOnPage(selected: boolean) {
+  const onPage = items.value.map((item) => item.id)
+  selection.value = selected
+    ? [...selection.value.filter((id) => !onPage.includes(id)), ...onPage]
+    : selection.value.filter((id) => !onPage.includes(id))
+}
+
+function clearSelection() {
+  selection.value = []
+}
+
+// Re-lists rather than patching local state: a bulk action may change what the current filter
+// matches, and the page has no idea what the action did.
+async function runBulkAction(action: ResourceBulkAction) {
+  bulkError.value = null
+  runningBulkAction.value = true
+  try {
+    await action.onClick([...selection.value])
+    selection.value = []
+    await store.list({
+      page: String(page.value),
+      ...search.value,
+      ...(sortParam.value ? { sort: sortParam.value } : {}),
+    })
+  } catch (error) {
+    // Caught rather than left to reject: the click handler cannot await, so a throwing action
+    // would otherwise surface only as an unhandled rejection. The selection is kept so the
+    // operator can retry, and the action stays free to report the failure its own way too.
+    bulkError.value = error instanceof Error ? error.message : 'The action could not be completed'
+  } finally {
+    runningBulkAction.value = false
+  }
+}
+
+const rowSelectionLabel = computed(() => {
+  const title = route.meta.spec?.title
+
+  return (item: ResourceListItem<Record<string, unknown>>): string =>
+    `Select ${title?.(item) ?? item.id}`
+})
+
 const customComponent = computed(
   () => route.meta.spec?.components?.list ?? getConfig().layout?.pages?.list,
 )
@@ -259,6 +343,11 @@ const customProps = computed<ResourceListPageProps>(() => ({
   onSearch: scheduleSearch,
   onSort: applySort,
   canCreate: canCreate.value,
+  selection: selection.value,
+  onToggleSelection: toggleSelection,
+  onToggleAllSelection: toggleAllOnPage,
+  bulkActions: bulkActions.value,
+  onRunBulkAction: runBulkAction,
 }))
 </script>
 
@@ -301,5 +390,24 @@ const customProps = computed<ResourceListPageProps>(() => ({
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.vue-resource.prince-bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  border: 1px solid var(--prince-color-border, #dee2e6);
+  border-radius: var(--prince-radius-sm, 4px);
+  background: var(--prince-color-surface, #f8f9fa);
+}
+
+.vue-resource.prince-bulk-count {
+  font-family: var(--prince-font-family, system-ui, -apple-system, sans-serif);
+  font-size: var(--prince-font-size-sm, 0.8125rem);
+  color: var(--prince-color-text-muted, #6c757d);
+  margin-right: auto;
 }
 </style>

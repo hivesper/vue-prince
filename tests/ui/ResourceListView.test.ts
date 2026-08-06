@@ -277,7 +277,7 @@ describe('ResourceListView', () => {
 
   describe('row selection', () => {
     const selectionCheckboxes = (wrapper: ReturnType<typeof mountView>) =>
-      wrapper.findAll<HTMLInputElement>('.field--selection input[type="checkbox"]')
+      wrapper.findAll<HTMLInputElement>('tbody .field--selection input[type="checkbox"]')
 
     it('renders no selection column without the selection props', () => {
       const wrapper = mountView()
@@ -379,6 +379,103 @@ describe('ResourceListView', () => {
       })
       await wrapper.find('thead .field--selection input').setValue(false)
       expect(onToggleAllSelection).toHaveBeenCalledWith(false)
+    })
+
+    it('ignores selected ids that are not on the current page', () => {
+      const wrapper = mountView({
+        selection: [2, 99],
+        onToggleSelection: vi.fn(),
+        onToggleAllSelection: vi.fn(),
+      })
+      const header = wrapper.find<HTMLInputElement>('thead .field--selection input')
+
+      expect(selectionCheckboxes(wrapper).map((box) => box.element.checked)).toEqual([false, true])
+      expect(header.element.checked).toBe(false)
+      expect(header.element.indeterminate).toBe(true)
+    })
+
+    it('checks the header box when every row on the page is selected despite extra off-page ids', () => {
+      const wrapper = mountView({
+        selection: [1, 2, 99],
+        onToggleSelection: vi.fn(),
+        onToggleAllSelection: vi.fn(),
+      })
+      const header = wrapper.find<HTMLInputElement>('thead .field--selection input')
+
+      expect(header.element.checked).toBe(true)
+      expect(header.element.indeterminate).toBe(false)
+    })
+
+    it('matches a numeric row id against a string selection', () => {
+      const wrapper = mountView({ selection: ['1'], onToggleSelection: vi.fn() })
+
+      expect(selectionCheckboxes(wrapper).map((box) => box.element.checked)).toEqual([true, false])
+    })
+
+    it('matches a string row id against a numeric selection', () => {
+      const wrapper = mountView({
+        items: [{ id: '1', status: 'active', _resource: 'company' }],
+        selection: [1],
+        onToggleSelection: vi.fn(),
+      })
+
+      expect(selectionCheckboxes(wrapper)[0].element.checked).toBe(true)
+    })
+
+    it('keeps the selection and action columns aligned when both are present', () => {
+      const wrapper = mountView({
+        selection: [],
+        onToggleSelection: vi.fn(),
+        onToggleAllSelection: vi.fn(),
+        itemActions: [{ label: 'Archive', onClick: vi.fn() }],
+      })
+
+      // one selection column + one per schema field + one actions column
+      expect(wrapper.findAll('thead th')).toHaveLength(schema.length + 2)
+      wrapper.findAll('tbody tr').forEach((row) => {
+        expect(row.findAll('td')).toHaveLength(schema.length + 2)
+      })
+    })
+
+    it('labels the row checkbox from rowSelectionLabel', () => {
+      const wrapper = mountView({
+        selection: [],
+        onToggleSelection: vi.fn(),
+        rowSelectionLabel: (item: { status?: unknown }) => `Select ${String(item.status)}`,
+      })
+
+      expect(selectionCheckboxes(wrapper)[0].attributes('aria-label')).toBe('Select active')
+    })
+
+    it('falls back to the row id when no rowSelectionLabel is given', () => {
+      const wrapper = mountView({ selection: [], onToggleSelection: vi.fn() })
+
+      expect(selectionCheckboxes(wrapper)[0].attributes('aria-label')).toBe('Select row 1')
+    })
+
+    it('scopes the default header label to the current page', () => {
+      const wrapper = mountView({
+        selection: [],
+        onToggleSelection: vi.fn(),
+        onToggleAllSelection: vi.fn(),
+      })
+
+      expect(wrapper.find('thead .field--selection input').attributes('aria-label')).toBe(
+        'Select all rows on this page',
+      )
+    })
+
+    it('uses selectAllLabel when the caller overrides it', () => {
+      const wrapper = mountView({
+        selection: [],
+        onToggleSelection: vi.fn(),
+        onToggleAllSelection: vi.fn(),
+        selectAllLabel: 'Select every company',
+      })
+
+      expect(wrapper.find('thead .field--selection input').attributes('aria-label')).toBe(
+        'Select every company',
+      )
     })
 
     it('leaves the header checkbox unchecked when there are no rows at all', () => {

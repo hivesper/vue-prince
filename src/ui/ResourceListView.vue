@@ -12,7 +12,7 @@
                 <input
                   v-if="onToggleAllSelection"
                   type="checkbox"
-                  aria-label="Select all rows"
+                  :aria-label="selectAllLabel ?? 'Select all rows on this page'"
                   :checked="allSelected"
                   :indeterminate="someSelected && !allSelected"
                   @change="onToggleAllSelection?.(!allSelected)"
@@ -57,7 +57,7 @@
               <td v-if="selectable" class="field--selection" @click.stop>
                 <input
                   type="checkbox"
-                  aria-label="Select row"
+                  :aria-label="rowSelectionLabel?.(item) ?? `Select row ${item.id}`"
                   :checked="isSelected(item.id)"
                   @change="onToggleSelection?.(item.id)"
                 />
@@ -114,9 +114,12 @@ const props = defineProps<{
   onSort?: (column: string) => void
   // Selection is controlled by the caller: pass the currently selected ids plus a toggle to
   // render the checkbox column. Omitting either leaves the table exactly as it was.
+  // Note the unrelated `selectable` row class below, which predates this and means "clickable".
   selection?: ResourceId[]
   onToggleSelection?: (id: ResourceId) => void
   onToggleAllSelection?: (selected: boolean) => void
+  selectAllLabel?: string
+  rowSelectionLabel?: (item: ResourceListItem<Record<string, unknown>>) => string
 }>()
 
 // Renders the table unwrapped when no `layout.table` is configured, so the markup below
@@ -157,8 +160,13 @@ function resolveItemActions(item: ResourceListItem<Record<string, unknown>>) {
 
 const selectable = computed(() => !!props.selection && !!props.onToggleSelection)
 
+// Ids are `number | string` and callers routinely hold the other form — route query values and
+// list params are strings while the column may be numeric — so match on the string form rather
+// than by identity, otherwise a selection silently never ticks.
+const selectedIds = computed(() => new Set((props.selection ?? []).map(String)))
+
 function isSelected(id: ResourceId): boolean {
-  return props.selection?.includes(id) ?? false
+  return selectedIds.value.has(String(id))
 }
 
 const allSelected = computed(
