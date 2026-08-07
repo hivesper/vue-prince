@@ -408,7 +408,6 @@ describe('ResourceListPage', () => {
       const wrapper = mountPage()
       await flushPromises()
 
-      expect(selectionOf(wrapper)).toBeUndefined()
       expect(listView(wrapper).props('onToggleSelection')).toBeUndefined()
     })
 
@@ -432,7 +431,7 @@ describe('ResourceListPage', () => {
       )
       await flushPromises()
 
-      expect(selectionOf(wrapper)).toBeUndefined()
+      expect(listView(wrapper).props('onToggleSelection')).toBeUndefined()
     })
 
     it('labels each row checkbox with the spec title', async () => {

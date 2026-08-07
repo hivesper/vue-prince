@@ -435,79 +435,8 @@ indicator. `ResourceListView` marks sortable headers with `.field--sortable`, th
 
 ## Row selection
 
-`ResourceListView` can render a leading checkbox column for bulk operations. Selection is
-**controlled by the caller** — the table renders what you pass and reports intent back, it keeps no
-state of its own:
-
-```vue
-<template>
-  <ResourceListView
-    :items="items"
-    :schema="schema"
-    :loading="loading"
-    :error="error"
-    :selection="selection"
-    :on-toggle-selection="toggle"
-    :on-toggle-all-selection="toggleAll"
-  />
-</template>
-
-<script setup lang="ts">
-import type { ResourceId } from '@hivesper/vue-prince'
-import { ref } from 'vue'
-
-const selection = ref<ResourceId[]>([])
-
-const toggle = (id: ResourceId): void => {
-  selection.value = selection.value.includes(id)
-    ? selection.value.filter((selected) => selected !== id)
-    : [...selection.value, id]
-}
-
-// `selected` is the state the header checkbox is moving to.
-const toggleAll = (selected: boolean): void => {
-  const onPage = items.value.map((item) => item.id)
-  selection.value = selected
-    ? [...selection.value.filter((id) => !onPage.includes(id)), ...onPage]
-    : selection.value.filter((id) => !onPage.includes(id))
-}
-</script>
-```
-
-| Prop                   | Effect                                                                                |
-| ---------------------- | ------------------------------------------------------------------------------------- |
-| `selection`            | Ids that render as checked. Required to show the column                               |
-| `onToggleSelection`    | Called with a row id when its checkbox changes. Required to show the column           |
-| `onToggleAllSelection` | Called with the target state when the header checkbox changes. Omit for no header box |
-| `selectAllLabel`       | `aria-label` for the header checkbox. Defaults to "Select all rows on this page"      |
-| `rowSelectionLabel`    | `aria-label` per row, from the row. Defaults to `Select row {id}`                     |
-
-`LayoutTableProps` carries all five, so a `layout.table` wrapper can render its own checkbox column.
-
-Both `selection` and `onToggleSelection` must be present — pass neither and the table renders exactly
-as before, so existing lists are unaffected.
-
-Because selection lives with the caller it survives paging and searching: `onToggleAllSelection`
-above only adds or removes the ids on the current page, leaving earlier picks intact. The header
-checkbox is checked when every row on the page is selected and indeterminate when only some are.
-
-The checkbox cell stops click propagation, so ticking a row does not fire `onRowClick` — a list can
-navigate on row click and select via the checkbox at the same time. Selected rows carry
-`.row--selected` for styling, and the cells carry `.field--selection`. (Not to be confused with the
-older `.selectable` row class, which means "this row is clickable".)
-
-Ids are compared on their string form, so a `selection` of `['1']` matches a row with `id: 1`. That
-matters because prince hands you both shapes — `item.id` is `number | string`, while route query
-values and list params are always strings.
-
-> Because the checkboxes are controlled, a toggle your handler ignores (a permission check, a failed
-> update) leaves the box visually flipped until something re-renders. Reflect every toggle in
-> `selection`, or reset it explicitly.
-
-### Bulk actions on the standard list page
-
-A resource that declares `actions.bulk` gets the checkbox column, a selection bar and one button per
-action on its generated list page — no custom component needed:
+A resource that declares `actions.bulk` gets a leading checkbox column, a selection bar and one
+button per action on its generated list page, with no custom component needed:
 
 ```ts
 export const companyResource = defineResource({
@@ -531,15 +460,28 @@ same way `actions.list[]` is, and with none left the column does not render at a
 
 After an action resolves the page clears the selection and re-lists, because the action may have
 changed what the current filter matches. If it rejects, the selection is kept so the operator can
-retry and the message is shown in the bar — the click handler cannot await, so an uncaught rejection
-would otherwise be invisible. Reporting it your own way (a toast, say) is still worth doing.
+retry and the message is shown in the bar. Selection accumulates across pages while the header
+checkbox stays page-scoped, so an action can apply to rows the operator has since paged away from.
 
-Selection is page-scoped in the header checkbox but accumulates across pages, so an action can apply
-to rows the operator has since paged away from. The count in the bar is what makes that visible.
+### Driving the table directly
 
-A `components: { list: … }` override receives `selection`, `onToggleSelection`,
-`onToggleAllSelection`, `bulkActions` and `onRunBulkAction` on `ResourceListPageProps`, so it can
-present the same thing differently.
+`ResourceListView` takes the same selection controlled by the caller: it renders what you pass and
+reports intent back, keeping no state of its own.
+
+| Prop                   | Effect                                                                                |
+| ---------------------- | ------------------------------------------------------------------------------------- |
+| `onToggleSelection`    | Called with a row id when its checkbox changes. Passing it is what shows the column   |
+| `selection`            | Ids that render as checked                                                            |
+| `onToggleAllSelection` | Called with the target state when the header checkbox changes. Omit for no header box |
+| `rowSelectionLabel`    | `aria-label` per row, from the row. Defaults to `Select row {id}`                     |
+
+`LayoutTableProps` carries all four, and `ResourceListPageProps` adds `bulkActions` and
+`onRunBulkAction`, so a `layout.table` wrapper or a `components: { list: … }` override can present
+the same thing differently.
+
+Ids are compared on their string form, so a `selection` of `['1']` matches a row with `id: 1`.
+Selected rows carry `.row--selected` and the cells carry `.field--selection`. The checkbox cell stops
+click propagation, so a list can navigate on row click and select via the checkbox at the same time.
 
 ---
 

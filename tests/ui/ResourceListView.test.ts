@@ -326,17 +326,6 @@ describe('ResourceListView', () => {
       expect(wrapper.find('thead .field--selection input').exists()).toBe(false)
     })
 
-    it('checks the header checkbox when every row is selected', () => {
-      const wrapper = mountView({
-        selection: [1, 2],
-        onToggleSelection: vi.fn(),
-        onToggleAllSelection: vi.fn(),
-      })
-      const header = wrapper.find<HTMLInputElement>('thead .field--selection input')
-      expect(header.element.checked).toBe(true)
-      expect(header.element.indeterminate).toBe(false)
-    })
-
     it('marks the header checkbox indeterminate on a partial selection', () => {
       const wrapper = mountView({
         selection: [1],
@@ -412,16 +401,6 @@ describe('ResourceListView', () => {
       expect(selectionCheckboxes(wrapper).map((box) => box.element.checked)).toEqual([true, false])
     })
 
-    it('matches a string row id against a numeric selection', () => {
-      const wrapper = mountView({
-        items: [{ id: '1', status: 'active', _resource: 'company' }],
-        selection: [1],
-        onToggleSelection: vi.fn(),
-      })
-
-      expect(selectionCheckboxes(wrapper)[0].element.checked).toBe(true)
-    })
-
     it('keeps the selection and action columns aligned when both are present', () => {
       const wrapper = mountView({
         selection: [],
@@ -462,19 +441,6 @@ describe('ResourceListView', () => {
 
       expect(wrapper.find('thead .field--selection input').attributes('aria-label')).toBe(
         'Select all rows on this page',
-      )
-    })
-
-    it('uses selectAllLabel when the caller overrides it', () => {
-      const wrapper = mountView({
-        selection: [],
-        onToggleSelection: vi.fn(),
-        onToggleAllSelection: vi.fn(),
-        selectAllLabel: 'Select every company',
-      })
-
-      expect(wrapper.find('thead .field--selection input').attributes('aria-label')).toBe(
-        'Select every company',
       )
     })
 

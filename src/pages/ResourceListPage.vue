@@ -26,7 +26,7 @@
     />
 
     <div v-if="selection.length" class="vue-resource prince-bulk-bar">
-      <span class="vue-resource prince-bulk-count">{{ selectionCount }}</span>
+      <span class="vue-resource prince-bulk-count">{{ selection.length }} selected</span>
       <PrinceButton
         v-for="(action, index) in bulkActions"
         :key="index"
@@ -35,7 +35,7 @@
         @click="runBulkAction(action)"
         >{{ bulkActionLabel(action) }}</PrinceButton
       >
-      <PrinceButton type="Cancel" :disabled="runningBulkAction" @click="clearSelection"
+      <PrinceButton type="Cancel" :disabled="runningBulkAction" @click="selection = []"
         >Clear</PrinceButton
       >
       <span v-if="bulkError" class="vue-resource prince-error">{{ bulkError }}</span>
@@ -54,7 +54,7 @@
       :item-actions="route.meta.spec?.actions?.resource"
       :sort="sort"
       :on-sort="applySort"
-      :selection="bulkActions.length ? selection : undefined"
+      :selection="selection"
       :on-toggle-selection="bulkActions.length ? toggleSelection : undefined"
       :on-toggle-all-selection="bulkActions.length ? toggleAllOnPage : undefined"
       :row-selection-label="rowSelectionLabel"
@@ -235,10 +235,6 @@ const bulkActions = computed(() =>
   (route.meta.spec?.actions?.bulk ?? []).filter((a) => hasActionPermission(a.permission)),
 )
 
-const selectionCount = computed(() =>
-  selection.value.length === 1 ? '1 selected' : `${selection.value.length} selected`,
-)
-
 function bulkActionLabel(action: ResourceBulkAction): string {
   return typeof action.label === 'function' ? action.label(selection.value) : action.label
 }
@@ -255,10 +251,6 @@ function toggleAllOnPage(selected: boolean) {
   selection.value = selected
     ? [...selection.value.filter((id) => !onPage.includes(id)), ...onPage]
     : selection.value.filter((id) => !onPage.includes(id))
-}
-
-function clearSelection() {
-  selection.value = []
 }
 
 // Re-lists rather than patching local state: a bulk action may change what the current filter
@@ -284,12 +276,8 @@ async function runBulkAction(action: ResourceBulkAction) {
   }
 }
 
-const rowSelectionLabel = computed(() => {
-  const title = route.meta.spec?.title
-
-  return (item: ResourceListItem<Record<string, unknown>>): string =>
-    `Select ${title?.(item) ?? item.id}`
-})
+const rowSelectionLabel = (item: ResourceListItem<Record<string, unknown>>): string =>
+  `Select ${route.meta.spec?.title?.(item) ?? item.id}`
 
 const customComponent = computed(
   () => route.meta.spec?.components?.list ?? getConfig().layout?.pages?.list,

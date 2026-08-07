@@ -24,7 +24,6 @@ export interface LayoutTableProps {
   selection?: ResourceId[]
   onToggleSelection?: (id: ResourceId) => void
   onToggleAllSelection?: (selected: boolean) => void
-  selectAllLabel?: string
   rowSelectionLabel?: (item: ResourceListItem<Record<string, unknown>>) => string
 }
 
