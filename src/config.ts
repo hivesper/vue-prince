@@ -1,6 +1,6 @@
 import type { Component } from 'vue'
 import type { MaybeRefOrGetter } from 'vue'
-import type { ResourceListItem, ResourceSchemaField } from './api'
+import type { ResourceId, ResourceListItem, ResourceSchemaField } from './api'
 import type { PrinceButtonType } from './button-props'
 import type { SpecFieldType } from './resource'
 import type { ResourceSort } from './sort'
@@ -21,6 +21,10 @@ export interface LayoutTableProps {
   onRowClick?: (item: ResourceListItem<Record<string, unknown>>) => void
   sort?: ResourceSort | null
   onSort?: (column: string) => void
+  selection?: ResourceId[]
+  onToggleSelection?: (id: ResourceId) => void
+  onToggleAllSelection?: (selected: boolean) => void
+  rowSelectionLabel?: (item: ResourceListItem<Record<string, unknown>>) => string
 }
 
 export interface LayoutTabsProps {

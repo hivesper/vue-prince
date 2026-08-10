@@ -361,4 +361,270 @@ describe('ResourceListPage', () => {
       return mountPage({ ...BASE_SPEC, components: { list: CustomList } }, query)
     }
   })
+
+  describe('bulk actions', () => {
+    const companies = [
+      { id: 1, name: 'Acme Corp', _resource: 'company' },
+      { id: 2, name: 'Beta Ltd', _resource: 'company' },
+    ]
+
+    const bulkSpec = (overrides: Record<string, unknown> = {}) => ({
+      ...BASE_SPEC,
+      title: (item: Record<string, unknown>) => String(item.name),
+      actions: { bulk: [{ label: 'Archive', onClick: vi.fn() }] },
+      ...overrides,
+    })
+
+    const listView = (wrapper: ReturnType<typeof mountPage>) =>
+      wrapper.findComponent(ResourceListView)
+
+    const selectionOf = (wrapper: ReturnType<typeof mountPage>) =>
+      listView(wrapper).props('selection')
+
+    // shallowMount stubs PrinceButton away, so the bulk bar's buttons are not clickable
+    // elements. Render them as plain buttons carrying their slot label instead.
+    const buttonStub = { template: '<button><slot/></button>' }
+
+    function mountWithButtons(spec: any, query: Record<string, string> = {}) {
+      vi.mocked(useRoute).mockReturnValue({
+        meta: { spec },
+        params: {},
+        query: { page: '1', ...query },
+      } as any)
+      return shallowMount(ResourceListPage, {
+        global: { stubs: { PrinceCard: cardStub, PrinceButton: buttonStub } },
+      })
+    }
+
+    const bulkBarButtons = (wrapper: ReturnType<typeof mountPage>) =>
+      wrapper.findAll('.prince-bulk-bar button')
+
+    beforeEach(() => {
+      store = makeStore({ items: companies })
+      vi.mocked(createResourceController).mockReturnValue({ store: () => store, api: {} } as any)
+    })
+
+    it('leaves selection off when the spec declares no bulk actions', async () => {
+      const wrapper = mountPage()
+      await flushPromises()
+
+      expect(listView(wrapper).props('onToggleSelection')).toBeUndefined()
+    })
+
+    it('turns selection on when the spec declares a bulk action', async () => {
+      const wrapper = mountPage(bulkSpec())
+      await flushPromises()
+
+      expect(selectionOf(wrapper)).toEqual([])
+      expect(listView(wrapper).props('onToggleSelection')).toBeTypeOf('function')
+      expect(listView(wrapper).props('onToggleAllSelection')).toBeTypeOf('function')
+    })
+
+    it('leaves selection off when the operator lacks the action permission', async () => {
+      configureVuePrince({ api: { baseUrl: '' }, userPermissions: () => ['company.read'] })
+      const wrapper = mountPage(
+        bulkSpec({
+          actions: {
+            bulk: [{ label: 'Archive', onClick: vi.fn(), permission: 'company.archive' }],
+          },
+        }),
+      )
+      await flushPromises()
+
+      expect(listView(wrapper).props('onToggleSelection')).toBeUndefined()
+    })
+
+    it('labels each row checkbox with the spec title', async () => {
+      const wrapper = mountPage(bulkSpec())
+      await flushPromises()
+
+      const label = listView(wrapper).props('rowSelectionLabel') as (
+        item: Record<string, unknown>,
+      ) => string
+      expect(label(companies[0])).toBe('Select Acme Corp')
+    })
+
+    it('hides the bulk bar until a row is selected', async () => {
+      const wrapper = mountPage(bulkSpec())
+      await flushPromises()
+
+      expect(wrapper.find('.prince-bulk-bar').exists()).toBe(false)
+    })
+
+    it('shows the bulk bar with a count once a row is selected', async () => {
+      const wrapper = mountPage(bulkSpec())
+      await flushPromises()
+
+      await (listView(wrapper).props('onToggleSelection') as (id: number) => void)(1)
+
+      expect(wrapper.find('.prince-bulk-bar').exists()).toBe(true)
+      expect(wrapper.find('.prince-bulk-count').text()).toBe('1 selected')
+    })
+
+    it('counts several selected rows', async () => {
+      const wrapper = mountPage(bulkSpec())
+      await flushPromises()
+      const toggle = listView(wrapper).props('onToggleSelection') as (id: number) => void
+
+      toggle(1)
+      toggle(2)
+      await flushPromises()
+
+      expect(wrapper.find('.prince-bulk-count').text()).toBe('2 selected')
+    })
+
+    it('deselects a row that is toggled twice', async () => {
+      const wrapper = mountPage(bulkSpec())
+      await flushPromises()
+      const toggle = listView(wrapper).props('onToggleSelection') as (id: number) => void
+
+      toggle(1)
+      toggle(1)
+      await flushPromises()
+
+      expect(selectionOf(wrapper)).toEqual([])
+    })
+
+    it('selects every row on the page from the header toggle', async () => {
+      const wrapper = mountPage(bulkSpec())
+      await flushPromises()
+
+      await (listView(wrapper).props('onToggleAllSelection') as (v: boolean) => void)(true)
+
+      expect(selectionOf(wrapper)).toEqual([1, 2])
+    })
+
+    it('clears only the current page from the header toggle', async () => {
+      const wrapper = mountPage(bulkSpec())
+      await flushPromises()
+      const toggle = listView(wrapper).props('onToggleSelection') as (id: number) => void
+      toggle(99)
+      await (listView(wrapper).props('onToggleAllSelection') as (v: boolean) => void)(true)
+
+      await (listView(wrapper).props('onToggleAllSelection') as (v: boolean) => void)(false)
+
+      expect(selectionOf(wrapper)).toEqual([99])
+    })
+
+    it('runs the action with the selected ids', async () => {
+      const onClick = vi.fn()
+      const wrapper = mountWithButtons(
+        bulkSpec({ actions: { bulk: [{ label: 'Archive', onClick }] } }),
+      )
+      await flushPromises()
+      await (listView(wrapper).props('onToggleSelection') as (id: number) => void)(2)
+
+      await bulkBarButtons(wrapper)[0].trigger('click')
+      await flushPromises()
+
+      expect(onClick).toHaveBeenCalledWith([2])
+    })
+
+    it('clears the selection and re-lists after the action', async () => {
+      const wrapper = mountWithButtons(bulkSpec(), { page: '2', search: '%acme%' })
+      await flushPromises()
+      await (listView(wrapper).props('onToggleSelection') as (id: number) => void)(1)
+      store.list.mockClear()
+
+      await bulkBarButtons(wrapper)[0].trigger('click')
+      await flushPromises()
+
+      expect(selectionOf(wrapper)).toEqual([])
+      expect(store.list).toHaveBeenCalledWith({ page: '2', search: '%acme%' })
+    })
+
+    it('resolves a function label with the current selection', async () => {
+      const wrapper = mountWithButtons(
+        bulkSpec({
+          actions: {
+            bulk: [{ label: (ids: unknown[]) => `Archive ${ids.length}`, onClick: vi.fn() }],
+          },
+        }),
+      )
+      await flushPromises()
+
+      await (listView(wrapper).props('onToggleSelection') as (id: number) => void)(1)
+
+      expect(bulkBarButtons(wrapper)[0].text()).toBe('Archive 1')
+    })
+
+    it('clears the selection from the Clear button without running an action', async () => {
+      const onClick = vi.fn()
+      const wrapper = mountWithButtons(
+        bulkSpec({ actions: { bulk: [{ label: 'Archive', onClick }] } }),
+      )
+      await flushPromises()
+      await (listView(wrapper).props('onToggleSelection') as (id: number) => void)(1)
+
+      const buttons = bulkBarButtons(wrapper)
+      await buttons[buttons.length - 1].trigger('click')
+      await flushPromises()
+
+      expect(selectionOf(wrapper)).toEqual([])
+      expect(onClick).not.toHaveBeenCalled()
+    })
+
+    it('keeps the selection when the action throws', async () => {
+      const onClick = vi.fn().mockRejectedValue(new Error('nope'))
+      const wrapper = mountWithButtons(
+        bulkSpec({ actions: { bulk: [{ label: 'Archive', onClick }] } }),
+      )
+      await flushPromises()
+      await (listView(wrapper).props('onToggleSelection') as (id: number) => void)(1)
+
+      await bulkBarButtons(wrapper)[0].trigger('click')
+      await flushPromises()
+
+      expect(selectionOf(wrapper)).toEqual([1])
+    })
+
+    it('shows the failure message when the action throws', async () => {
+      const onClick = vi.fn().mockRejectedValue(new Error('Company has users'))
+      const wrapper = mountWithButtons(
+        bulkSpec({ actions: { bulk: [{ label: 'Archive', onClick }] } }),
+      )
+      await flushPromises()
+      await (listView(wrapper).props('onToggleSelection') as (id: number) => void)(1)
+
+      await bulkBarButtons(wrapper)[0].trigger('click')
+      await flushPromises()
+
+      expect(wrapper.find('.prince-bulk-bar .prince-error').text()).toBe('Company has users')
+    })
+
+    it('does not re-list when the action throws', async () => {
+      const onClick = vi.fn().mockRejectedValue(new Error('nope'))
+      const wrapper = mountWithButtons(
+        bulkSpec({ actions: { bulk: [{ label: 'Archive', onClick }] } }),
+      )
+      await flushPromises()
+      await (listView(wrapper).props('onToggleSelection') as (id: number) => void)(1)
+      store.list.mockClear()
+
+      await bulkBarButtons(wrapper)[0].trigger('click')
+      await flushPromises()
+
+      expect(store.list).not.toHaveBeenCalled()
+    })
+
+    it('clears a previous failure message on the next run', async () => {
+      const onClick = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('nope'))
+        .mockResolvedValueOnce(undefined)
+      const wrapper = mountWithButtons(
+        bulkSpec({ actions: { bulk: [{ label: 'Archive', onClick }] } }),
+      )
+      await flushPromises()
+      await (listView(wrapper).props('onToggleSelection') as (id: number) => void)(1)
+      await bulkBarButtons(wrapper)[0].trigger('click')
+      await flushPromises()
+
+      // The failed run kept the selection, so the same button is still there to retry with.
+      await bulkBarButtons(wrapper)[0].trigger('click')
+      await flushPromises()
+
+      expect(wrapper.find('.prince-bulk-bar').exists()).toBe(false)
+    })
+  })
 })

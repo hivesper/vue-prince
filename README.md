@@ -433,6 +433,58 @@ indicator. `ResourceListView` marks sortable headers with `.field--sortable`, th
 
 ---
 
+## Row selection
+
+A resource that declares `actions.bulk` gets a leading checkbox column, a selection bar and one
+button per action on its generated list page, with no custom component needed:
+
+```ts
+export const companyResource = defineResource({
+  name: 'company',
+  route: '/companies',
+  api: () => createResourceApi({ path: '/api/companies' }),
+  actions: {
+    bulk: [
+      {
+        label: (ids) => `Archive ${ids.length}`,
+        onClick: async (ids) => archiveCompanies(ids),
+        permission: 'company.archive',
+      },
+    ],
+  },
+})
+```
+
+`label` may be a string or a function of the current selection. Actions are permission-filtered the
+same way `actions.list[]` is, and with none left the column does not render at all.
+
+After an action resolves the page clears the selection and re-lists, because the action may have
+changed what the current filter matches. If it rejects, the selection is kept so the operator can
+retry and the message is shown in the bar. Selection accumulates across pages while the header
+checkbox stays page-scoped, so an action can apply to rows the operator has since paged away from.
+
+### Driving the table directly
+
+`ResourceListView` takes the same selection controlled by the caller: it renders what you pass and
+reports intent back, keeping no state of its own.
+
+| Prop                   | Effect                                                                                |
+| ---------------------- | ------------------------------------------------------------------------------------- |
+| `onToggleSelection`    | Called with a row id when its checkbox changes. Passing it is what shows the column   |
+| `selection`            | Ids that render as checked                                                            |
+| `onToggleAllSelection` | Called with the target state when the header checkbox changes. Omit for no header box |
+| `rowSelectionLabel`    | `aria-label` per row, from the row. Defaults to `Select row {id}`                     |
+
+`LayoutTableProps` carries all four, and `ResourceListPageProps` adds `bulkActions` and
+`onRunBulkAction`, so a `layout.table` wrapper or a `components: { list: … }` override can present
+the same thing differently.
+
+Ids are compared on their string form, so a `selection` of `['1']` matches a row with `id: 1`.
+Selected rows carry `.row--selected` and the cells carry `.field--selection`. The checkbox cell stops
+click propagation, so a list can navigate on row click and select via the checkbox at the same time.
+
+---
+
 ## Custom field components
 
 Every field component receives `FieldProps` via `defineProps` and the value via `defineModel`:

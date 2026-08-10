@@ -1,5 +1,5 @@
-import type { ResourceListItem, ResourceListMetadata, ResourceSchemaField } from './api'
-import type { ResourceFieldDef } from './resource'
+import type { ResourceId, ResourceListItem, ResourceListMetadata, ResourceSchemaField } from './api'
+import type { ResourceBulkAction, ResourceFieldDef } from './resource'
 import type { ResourceSort } from './sort'
 import type { ResolvedTab } from './pages/use-resource-tabs'
 
@@ -22,6 +22,11 @@ export interface ResourceListPageProps<T = Record<string, unknown>> {
   onSearch: (params: Record<string, string>) => void
   onSort: (column: string) => void
   canCreate: boolean
+  selection: ResourceId[]
+  onToggleSelection: (id: ResourceId) => void
+  onToggleAllSelection: (selected: boolean) => void
+  bulkActions: ResourceBulkAction[]
+  onRunBulkAction: (action: ResourceBulkAction) => Promise<void>
 }
 
 export interface ResourceViewPageProps {

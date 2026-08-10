@@ -8,6 +8,16 @@
         <table :class="['vue-resource', 'resource-table', resource && `${resource}-table`]">
           <thead>
             <tr>
+              <th v-if="onToggleSelection" class="field--selection">
+                <input
+                  v-if="onToggleAllSelection"
+                  type="checkbox"
+                  aria-label="Select all rows on this page"
+                  :checked="allSelected"
+                  :indeterminate="!allSelected && items.some((item) => isSelected(item.id))"
+                  @change="onToggleAllSelection(!allSelected)"
+                />
+              </th>
               <th
                 v-for="field in schema"
                 :key="field.name"
@@ -41,9 +51,17 @@
             <tr
               v-for="item in items"
               :key="item.id"
-              :class="{ selectable: !!onRowClick }"
+              :class="{ selectable: !!onRowClick, 'row--selected': isSelected(item.id) }"
               @click="onRowClick?.(item)"
             >
+              <td v-if="onToggleSelection" class="field--selection" @click.stop>
+                <input
+                  type="checkbox"
+                  :aria-label="rowSelectionLabel?.(item) ?? `Select row ${item.id}`"
+                  :checked="isSelected(item.id)"
+                  @change="onToggleSelection(item.id)"
+                />
+              </td>
               <td
                 v-for="field in schema"
                 :key="field.name"
@@ -73,7 +91,7 @@
 
 <script setup lang="ts">
 import { computed, defineComponent } from 'vue'
-import type { ResourceListItem, ResourceSchemaField } from '../api'
+import type { ResourceId, ResourceListItem, ResourceSchemaField } from '../api'
 import type { ResourceFieldDef, ResourceItemAction } from '../resource'
 import { hasActionPermission } from '../resource'
 import type { ResourceSort } from '../sort'
@@ -94,6 +112,13 @@ const props = defineProps<{
   itemActions?: ResourceItemAction[]
   sort?: ResourceSort | null
   onSort?: (column: string) => void
+  // Selection is controlled by the caller: `onToggleSelection` renders the checkbox column and
+  // `selection` says which boxes are ticked. Note the unrelated `selectable` row class below,
+  // which predates this and means "clickable".
+  selection?: ResourceId[]
+  onToggleSelection?: (id: ResourceId) => void
+  onToggleAllSelection?: (selected: boolean) => void
+  rowSelectionLabel?: (item: ResourceListItem<Record<string, unknown>>) => string
 }>()
 
 // Renders the table unwrapped when no `layout.table` is configured, so the markup below
@@ -131,6 +156,19 @@ function resolveItemActions(item: ResourceListItem<Record<string, unknown>>) {
     onClick: () => a.onClick(item),
   }))
 }
+
+// Ids are `number | string` and callers routinely hold the other form: route query values and
+// list params are strings while the column may be numeric. Match on the string form rather than
+// by identity, otherwise a selection silently never ticks.
+const selectedIds = computed(() => new Set((props.selection ?? []).map(String)))
+
+function isSelected(id: ResourceId): boolean {
+  return selectedIds.value.has(String(id))
+}
+
+const allSelected = computed(
+  () => props.items.length > 0 && props.items.every((item) => isSelected(item.id)),
+)
 
 function isSortable(name: string): boolean {
   return !!props.onSort && props.fields?.[name]?.list?.sortable === true
@@ -199,10 +237,34 @@ function tdStyle(name: string): Record<string, string> {
   text-align: right;
 }
 
+.vue-resource.resource-table th.field--selection,
+.vue-resource.resource-table td.field--selection {
+  width: 32px;
+  padding: 4px 8px;
+  text-align: left;
+}
+
+.vue-resource.resource-table .field--selection input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--prince-color-primary, #2563eb);
+  vertical-align: middle;
+}
+
 .vue-resource.resource-table td {
   padding: 8px 12px;
   border-bottom: 1px solid var(--prince-color-border, #dee2e6);
   vertical-align: middle;
+}
+
+.vue-resource.resource-table tbody tr.row--selected {
+  background: var(--prince-color-selected, #eff6ff);
+}
+
+.vue-resource.resource-table tbody tr.selectable.row--selected:hover {
+  background: var(--prince-color-selected-hover, #dbeafe);
 }
 
 .vue-resource.resource-table tbody tr:last-child td {
